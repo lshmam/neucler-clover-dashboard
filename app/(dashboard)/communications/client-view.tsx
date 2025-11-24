@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
     Card, CardContent, CardHeader, CardTitle, CardDescription
 } from "@/components/ui/card";
@@ -22,25 +23,77 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
     Phone, Mail, MessageSquare, PlayCircle, Clock,
-    Search, Send, Plus, Users, Radio, MoreVertical,
-    Bot, CheckCircle2, XCircle, Filter, ArrowUpRight
+    Search, Send, Plus, MoreVertical,
+    Bot, Filter, Loader2, Radio
 } from "lucide-react";
-
-// Types for our data
-type CallLog = any; // Replace with specific types if available
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+type CallLog = any;
 type SmsLog = any;
+type EmailCampaign = any;
 
 interface CommunicationsClientProps {
     calls: CallLog[];
     messages: SmsLog[];
+    campaigns: EmailCampaign[]; // Added campaigns prop
 }
 
-export function CommunicationsClient({ calls, messages }: CommunicationsClientProps) {
-    const [selectedSmsId, setSelectedSmsId] = useState<string | null>(messages[0]?.id || "1");
+export function CommunicationsClient({ calls, messages, campaigns }: CommunicationsClientProps) {
+    const router = useRouter();
+
+    // UI State
+    const [selectedSmsId, setSelectedSmsId] = useState<string | null>(messages[0]?.id || null);
     const [activeTab, setActiveTab] = useState("calls");
+    const [isCampaignSheetOpen, setIsCampaignSheetOpen] = useState(false);
+    const [sending, setSending] = useState(false);
+
+    // Campaign Form State
+    const [campaignTitle, setCampaignTitle] = useState("");
+    const [campaignSubject, setCampaignSubject] = useState("");
+    const [campaignAudience, setCampaignAudience] = useState("all");
+    const [campaignContent, setCampaignContent] = useState("");
+
+    // Helper to format dates consistently (prevents Hydration errors)
+    const formatDate = (dateString: string) => {
+        return new Date(dateString).toLocaleString('en-US', {
+            month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric'
+        });
+    };
+
+    const handleSendCampaign = async () => {
+        setSending(true);
+        try {
+            const res = await fetch("/api/campaigns/send", {
+                method: "POST",
+                body: JSON.stringify({
+                    title: campaignTitle,
+                    subject: campaignSubject,
+                    audience: campaignAudience,
+                    content: campaignContent
+                })
+            });
+
+            if (res.ok) {
+                alert("Campaign Sent Successfully!");
+                setIsCampaignSheetOpen(false);
+                // Reset form
+                setCampaignTitle("");
+                setCampaignSubject("");
+                setCampaignContent("");
+                // Refresh the page to show the new campaign in the list
+                router.refresh();
+            } else {
+                alert("Failed to send.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("An error occurred.");
+        }
+        setSending(false);
+    };
 
     return (
         <div className="flex-1 space-y-4 p-8 pt-6 h-[calc(100vh-64px)] flex flex-col">
@@ -56,7 +109,7 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                 </Button>
             </div>
 
-            <Tabs defaultValue="calls" className="flex-1 flex flex-col overflow-hidden" onValueChange={setActiveTab}>
+            <Tabs defaultValue="calls" value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
                 <div className="shrink-0">
                     <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent">
                         <TabsTrigger value="calls" className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#906CDD] px-6 py-3">AI Calls</TabsTrigger>
@@ -105,7 +158,7 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                                 {call.transcript || "No transcript available..."}
                                             </TableCell>
                                             <TableCell>
-                                                {new Date(call.start_timestamp).toLocaleString()}
+                                                {formatDate(call.start_timestamp)}
                                             </TableCell>
                                             <TableCell>
                                                 {Math.round(call.duration_ms / 1000)}s
@@ -119,7 +172,7 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                                         <SheetHeader>
                                                             <SheetTitle>Call Details</SheetTitle>
                                                             <SheetDescription>
-                                                                Recorded on {new Date(call.start_timestamp).toLocaleString()}
+                                                                Recorded on {formatDate(call.start_timestamp)}
                                                             </SheetDescription>
                                                         </SheetHeader>
                                                         <div className="py-6 space-y-6">
@@ -160,7 +213,7 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                     </Card>
                 </TabsContent>
 
-                {/* --- TAB 2: SMS CONVERSATIONS (Split View) --- */}
+                {/* --- TAB 2: SMS CONVERSATIONS --- */}
                 <TabsContent value="sms" className="flex-1 overflow-hidden border rounded-lg">
                     <div className="grid grid-cols-12 h-full bg-white">
                         {/* LEFT PANEL: List */}
@@ -176,27 +229,22 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                         className={`p-4 border-b cursor-pointer hover:bg-slate-50 transition-colors ${selectedSmsId === msg.id ? 'bg-purple-50 border-l-4 border-l-[#906CDD]' : ''}`}
                                     >
                                         <div className="flex justify-between items-start mb-1">
-                                            <span className="font-semibold">Customer Name</span>
-                                            <span className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                            <span className="font-semibold">Customer</span>
+                                            <span className="text-xs text-muted-foreground">{formatDate(msg.created_at)}</span>
                                         </div>
                                         <p className="text-sm text-muted-foreground line-clamp-2">{msg.description}</p>
                                     </div>
                                 ))}
-                                {/* Mock Extra Items */}
-                                <div className="p-4 border-b cursor-pointer hover:bg-slate-50">
-                                    <div className="flex justify-between items-start mb-1">
-                                        <span className="font-semibold">Jane Doe</span>
-                                        <span className="text-xs text-muted-foreground">10:42 AM</span>
+                                {messages.length === 0 && (
+                                    <div className="p-8 text-center text-muted-foreground text-sm">
+                                        No messages found.
                                     </div>
-                                    <p className="text-sm text-muted-foreground line-clamp-2">Yes, please reschedule my appointment to next Tuesday.</p>
-                                    <Badge variant="secondary" className="mt-2 text-[10px]">Needs Reply</Badge>
-                                </div>
+                                )}
                             </ScrollArea>
                         </div>
 
                         {/* RIGHT PANEL: Chat View */}
                         <div className="col-span-8 flex flex-col h-full">
-                            {/* Chat Header */}
                             <div className="p-4 border-b flex justify-between items-center bg-slate-50/50">
                                 <div className="flex items-center gap-3">
                                     <Avatar>
@@ -210,16 +258,13 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                 <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
                             </div>
 
-                            {/* Messages Area */}
                             <ScrollArea className="flex-1 p-4 bg-slate-50/30">
                                 <div className="space-y-4">
-                                    {/* AI Message */}
                                     <div className="flex justify-end">
                                         <div className="bg-[#906CDD] text-white rounded-l-lg rounded-tr-lg p-3 max-w-[70%] text-sm">
                                             Hi Jane! It looks like it's been 4 weeks since your last cut. Want to book for this week?
                                         </div>
                                     </div>
-                                    {/* Customer Message */}
                                     <div className="flex justify-start">
                                         <div className="bg-white border text-gray-800 rounded-r-lg rounded-tl-lg p-3 max-w-[70%] text-sm shadow-sm">
                                             Yes, please reschedule my appointment to next Tuesday at 2pm.
@@ -228,11 +273,9 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                 </div>
                             </ScrollArea>
 
-                            {/* Composer */}
                             <div className="p-4 border-t bg-white">
                                 <div className="flex gap-2 mb-2 overflow-x-auto">
                                     <Badge variant="outline" className="cursor-pointer hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200">Confirm Appointment</Badge>
-                                    <Badge variant="outline" className="cursor-pointer hover:bg-purple-50 hover:text-purple-700 hover:border-purple-200">Send Pricing</Badge>
                                 </div>
                                 <div className="flex gap-2">
                                     <Textarea placeholder="Type a message..." className="min-h-[60px]" />
@@ -245,50 +288,118 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
 
                 {/* --- TAB 3: EMAIL CAMPAIGNS --- */}
                 <TabsContent value="email" className="space-y-4 overflow-auto p-1">
+                    <div className="flex justify-between items-center mb-4">
+                        <h3 className="text-lg font-medium">Recent Campaigns</h3>
+
+                        {/* CREATE CAMPAIGN SHEET */}
+                        <Sheet open={isCampaignSheetOpen} onOpenChange={setIsCampaignSheetOpen}>
+                            <SheetTrigger asChild>
+                                <Button className="bg-[#906CDD] hover:bg-[#7a5bb5]">
+                                    <Plus className="mr-2 h-4 w-4" /> Create Campaign
+                                </Button>
+                            </SheetTrigger>
+                            <SheetContent className="w-[500px] sm:w-[600px] overflow-y-auto">
+                                <SheetHeader>
+                                    <SheetTitle>New Email Campaign</SheetTitle>
+                                    <SheetDescription>
+                                        Design and send a broadcast to your customers.
+                                    </SheetDescription>
+                                </SheetHeader>
+                                <div className="space-y-6 py-6">
+                                    <div className="space-y-2">
+                                        <Label>Campaign Name (Internal)</Label>
+                                        <Input
+                                            placeholder="e.g. October Newsletter"
+                                            value={campaignTitle}
+                                            onChange={(e) => setCampaignTitle(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Audience</Label>
+                                        <Select value={campaignAudience} onValueChange={setCampaignAudience}>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select audience" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Customers</SelectItem>
+                                                <SelectItem value="vip">VIPs (&gt; $500 spend)</SelectItem>
+                                                <SelectItem value="new">New Customers (1 visit)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <Separator />
+
+                                    <div className="space-y-2">
+                                        <Label>Subject Line</Label>
+                                        <Input
+                                            placeholder="e.g. You deserve a treat!"
+                                            value={campaignSubject}
+                                            onChange={(e) => setCampaignSubject(e.target.value)}
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label>Email Content (HTML)</Label>
+                                        <Textarea
+                                            className="min-h-[200px] font-mono text-sm"
+                                            placeholder="<p>Hey there,</p>..."
+                                            value={campaignContent}
+                                            onChange={(e) => setCampaignContent(e.target.value)}
+                                        />
+                                        <p className="text-xs text-muted-foreground">Basic HTML tags are supported.</p>
+                                    </div>
+
+                                    <Button
+                                        className="w-full bg-[#906CDD] hover:bg-[#7a5bb5]"
+                                        onClick={handleSendCampaign}
+                                        disabled={sending}
+                                    >
+                                        {sending ? <Loader2 className="animate-spin mr-2" /> : <Send className="mr-2 h-4 w-4" />}
+                                        {sending ? "Sending..." : "Send Campaign Now"}
+                                    </Button>
+                                </div>
+                            </SheetContent>
+                        </Sheet>
+                    </div>
+
+                    {/* Campaign Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Campaign Card 1 */}
-                        <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                            <CardHeader>
-                                <div className="flex justify-between items-start">
-                                    <Badge>Sent</Badge>
-                                    <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
-                                </div>
-                                <CardTitle className="text-lg">October Newsletter</CardTitle>
-                                <CardDescription>Sent Oct 15 • 1,240 Recipients</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-3 gap-2 text-center">
-                                    <div>
-                                        <div className="text-xl font-bold">42%</div>
-                                        <div className="text-xs text-muted-foreground">Open Rate</div>
+                        {campaigns.length === 0 && (
+                            <div className="col-span-3 text-center py-12 text-muted-foreground border rounded-lg border-dashed">
+                                No campaigns sent yet. Create one to get started.
+                            </div>
+                        )}
+
+                        {campaigns.map((c) => (
+                            <Card key={c.id} className="hover:shadow-md transition-shadow cursor-pointer">
+                                <CardHeader>
+                                    <div className="flex justify-between items-start">
+                                        <Badge variant={c.status === 'sent' ? 'default' : 'outline'} className={c.status === 'sent' ? 'bg-green-600' : ''}>
+                                            {c.status}
+                                        </Badge>
+                                        <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
                                     </div>
-                                    <div>
-                                        <div className="text-xl font-bold">12%</div>
-                                        <div className="text-xs text-muted-foreground">Click Rate</div>
+                                    <CardTitle className="text-lg">{c.name}</CardTitle>
+                                    <CardDescription>
+                                        Sent {formatDate(c.created_at)} • {c.sent_count} Recipients
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-2 gap-2 text-center">
+                                        <div>
+                                            <div className="text-xl font-bold">--%</div>
+                                            <div className="text-xs text-muted-foreground">Open Rate</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xl font-bold">--%</div>
+                                            <div className="text-xs text-muted-foreground">Click Rate</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-xl font-bold text-green-600">$1.2k</div>
-                                        <div className="text-xs text-muted-foreground">Revenue</div>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        {/* Campaign Card 2 */}
-                        <Card className="hover:shadow-md transition-shadow cursor-pointer border-dashed">
-                            <CardHeader>
-                                <div className="flex justify-between items-start">
-                                    <Badge variant="outline">Draft</Badge>
-                                    <Button variant="ghost" size="icon"><MoreVertical className="h-4 w-4" /></Button>
-                                </div>
-                                <CardTitle className="text-lg">Black Friday Early Access</CardTitle>
-                                <CardDescription>Scheduled Nov 20 • VIP Segment</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="flex items-center justify-center h-16 text-muted-foreground text-sm">
-                                    Ready to Schedule
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        ))}
                     </div>
                 </TabsContent>
 
@@ -323,13 +434,6 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                         <TableCell>Dec 20, 2024</TableCell>
                                         <TableCell><Badge className="bg-green-100 text-green-800">Completed</Badge></TableCell>
                                     </TableRow>
-                                    <TableRow>
-                                        <TableCell className="font-medium">VIP Exclusive Event</TableCell>
-                                        <TableCell><div className="flex items-center gap-2"><Mail className="h-3 w-3" /> Email</div></TableCell>
-                                        <TableCell>VIP Segment (45)</TableCell>
-                                        <TableCell>Nov 01, 2024</TableCell>
-                                        <TableCell><Badge className="bg-green-100 text-green-800">Completed</Badge></TableCell>
-                                    </TableRow>
                                 </TableBody>
                             </Table>
                         </CardContent>
@@ -348,13 +452,6 @@ export function CommunicationsClient({ calls, messages }: CommunicationsClientPr
                                         <span className="text-[10px] text-muted-foreground">2m ago</span>
                                     </div>
                                     <p className="text-xs text-muted-foreground truncate">Customer asked about availability...</p>
-                                </div>
-                                <div className="p-3 rounded-lg border hover:bg-slate-50 cursor-pointer">
-                                    <div className="flex justify-between mb-1">
-                                        <span className="font-medium text-sm">Pricing Question</span>
-                                        <span className="text-[10px] text-muted-foreground">1h ago</span>
-                                    </div>
-                                    <p className="text-xs text-muted-foreground truncate">Customer asked about gel pricing...</p>
                                 </div>
                             </div>
                         </div>

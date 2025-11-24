@@ -79,6 +79,11 @@ export async function syncCustomers(merchantId: string, accessToken: string) {
     const data = await res.json();
     const cloverCustomers = data.elements || [];
 
+    if (cloverCustomers.length > 0) {
+        console.log("🔍 RAW CLOVER CUSTOMER DATA (First Item):");
+        console.dir(cloverCustomers[0], { depth: null });
+    }
+
     console.log(`📥 Fetched ${cloverCustomers.length} customers. Saving to DB...`);
 
     // 2. Map to DB format
